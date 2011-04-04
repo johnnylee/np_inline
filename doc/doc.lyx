@@ -1,0 +1,626 @@
+#LyX 1.6.7 created this file. For more info see http://www.lyx.org/
+\lyxformat 345
+\begin_document
+\begin_header
+\textclass article
+\use_default_options true
+\begin_modules
+theorems-ams
+\end_modules
+\language english
+\inputencoding auto
+\font_roman default
+\font_sans default
+\font_typewriter default
+\font_default_family default
+\font_sc false
+\font_osf false
+\font_sf_scale 100
+\font_tt_scale 100
+
+\graphics default
+\paperfontsize default
+\spacing single
+\use_hyperref false
+\papersize default
+\use_geometry true
+\use_amsmath 1
+\use_esint 1
+\cite_engine basic
+\use_bibtopic false
+\paperorientation portrait
+\leftmargin 1in
+\rightmargin 1in
+\secnumdepth -1
+\tocdepth -1
+\paragraph_separation skip
+\defskip smallskip
+\quotes_language english
+\papercolumns 1
+\papersides 1
+\paperpagestyle empty
+\tracking_changes false
+\output_changes false
+\author "" 
+\author "" 
+\end_header
+
+\begin_body
+
+\begin_layout Title
+np_inline 0.1
+\end_layout
+
+\begin_layout Author
+J.
+ David Lee 
+\end_layout
+
+\begin_layout Standard
+\begin_inset Note Note
+status open
+
+\begin_layout Plain Layout
+Convert to html with htlatex (no options).
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Section
+Overview
+\end_layout
+
+\begin_layout Standard
+The 
+\emph on
+np_inline
+\emph default
+ module was written as a simplified replacement for 
+\emph on
+scipy.weave.inline
+\emph default
+ for numeric computations on numpy arrays.
+ 
+\end_layout
+
+\begin_layout Section
+Simple example usage
+\end_layout
+
+\begin_layout Subsection
+Hello world
+\end_layout
+
+\begin_layout LyX-Code
+from np_inline import inline_debug as inline
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset Newline newline
+\end_inset
+
+code = r'printf("Program #%i: Hello world.
+\backslash
+n", i);'
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset Newline newline
+\end_inset
+
+inline('hello_world_example', 
+\end_layout
+
+\begin_layout LyX-Code
+       args=(1, ),  
+\end_layout
+
+\begin_layout LyX-Code
+       py_types=((int, 'i'), ), 
+\end_layout
+
+\begin_layout LyX-Code
+       code=code) 
+\end_layout
+
+\begin_layout Standard
+Note that inline cannot be used without passing at least one argument in
+ 
+\emph on
+args
+\emph default
+.
+ This is a feature.
+ 
+\end_layout
+
+\begin_layout Subsection
+Matrix multiplication
+\end_layout
+
+\begin_layout LyX-Code
+import numpy as np
+\end_layout
+
+\begin_layout LyX-Code
+from np_inline import inline_debug as inline 
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset Newline newline
+\end_inset
+
+arr = np.array((
+\end_layout
+
+\begin_layout LyX-Code
+        (0, 1, 2, 3),
+\end_layout
+
+\begin_layout LyX-Code
+        (4, 5, 6, 7),
+\end_layout
+
+\begin_layout LyX-Code
+        (8, 9, 0, 1)), dtype=np.float32) 
+\end_layout
+
+\begin_layout LyX-Code
+m = 0.5
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset Newline newline
+\end_inset
+
+code = r''' 
+\end_layout
+
+\begin_layout LyX-Code
+int i, j; 
+\end_layout
+
+\begin_layout LyX-Code
+for(i = 0; i < arr_shape(0); ++i) {
+\end_layout
+
+\begin_layout LyX-Code
+    for(j = 0; j < arr_shape(1); ++j) {
+\end_layout
+
+\begin_layout LyX-Code
+        arr(i, j) = m * arr(i, j);
+\end_layout
+
+\begin_layout LyX-Code
+    }
+\end_layout
+
+\begin_layout LyX-Code
+} 
+\end_layout
+
+\begin_layout LyX-Code
+''' 
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset Newline newline
+\end_inset
+
+inline('array_mult_example',
+\end_layout
+
+\begin_layout LyX-Code
+       args=(m, arr),
+\end_layout
+
+\begin_layout LyX-Code
+       py_types=((float, 'm'), ),
+\end_layout
+
+\begin_layout LyX-Code
+       np_types=((np.float32, 2, 'arr'), ),
+\end_layout
+
+\begin_layout LyX-Code
+       code=code)   
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset Newline newline
+\end_inset
+
+print(arr)
+\end_layout
+
+\begin_layout Subsection
+Returning a value
+\end_layout
+
+\begin_layout LyX-Code
+import numpy as np
+\begin_inset Newline newline
+\end_inset
+
+from np_inline import inline_debug as inline
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset Newline newline
+\end_inset
+
+arr = np.arange(0, 10, 0.5, dtype=np.float32)
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset Newline newline
+\end_inset
+
+code = r''' 
+\end_layout
+
+\begin_layout LyX-Code
+int i; 
+\end_layout
+
+\begin_layout LyX-Code
+return_val = 0;
+\end_layout
+
+\begin_layout LyX-Code
+
+\end_layout
+
+\begin_layout LyX-Code
+for(i=0; i < arr_shape(0); ++i) { 
+\end_layout
+
+\begin_layout LyX-Code
+    return_val += arr(i);
+\end_layout
+
+\begin_layout LyX-Code
+} 
+\end_layout
+
+\begin_layout LyX-Code
+'''
+\end_layout
+
+\begin_layout LyX-Code
+inline('return_val_test', 
+\end_layout
+
+\begin_layout LyX-Code
+       args=(arr, ), 
+\end_layout
+
+\begin_layout LyX-Code
+       np_types=((np.float32, 1, 'arr'), ), 
+\end_layout
+
+\begin_layout LyX-Code
+       code=code, 
+\end_layout
+
+\begin_layout LyX-Code
+       return_type=float) 
+\end_layout
+
+\begin_layout Section
+Usage notes
+\end_layout
+
+\begin_layout Subsection
+Passing arguments
+\end_layout
+
+\begin_layout Standard
+The primitive python types that can be passed as arguments are 
+\emph on
+int
+\emph default
+ and 
+\emph on
+double
+\emph default
+, while almost any numeric type of numpy 
+\emph on
+ndarray
+\emph default
+ can be pass as an argument.
+ The arguments must be sorted so the primitive python types precede the
+ numpy types.
+ 
+\end_layout
+
+\begin_layout Subsubsection
+Primitive python types
+\end_layout
+
+\begin_layout Standard
+Python primitive types are converted to C types as follows:
+\end_layout
+
+\begin_layout LyX-Code
+int   --> long int
+\end_layout
+
+\begin_layout LyX-Code
+float --> double
+\end_layout
+
+\begin_layout Standard
+For each primitive python object passed in, the type and name must be provided
+ in the 
+\emph on
+py_types 
+\emph default
+argument.
+ For example, to pass an integer argument, 
+\emph on
+i
+\emph default
+, and a float argument, 
+\emph on
+f
+\emph default
+, the 
+\emph on
+py_types
+\emph default
+ argument would be
+\end_layout
+
+\begin_layout LyX-Code
+((int, 'i'), (float, 'f'))
+\end_layout
+
+\begin_layout Subsubsection
+Numpy arrays
+\end_layout
+
+\begin_layout Standard
+Numpy defines C data types corresponding to each numeric type:
+\end_layout
+
+\begin_layout LyX-Code
+uint8    --> npy_uint8
+\end_layout
+
+\begin_layout LyX-Code
+uint16   --> npy_uint16
+\end_layout
+
+\begin_layout LyX-Code
+uint32   --> npy_uint32
+\end_layout
+
+\begin_layout LyX-Code
+uint64   --> npy_uint64
+\end_layout
+
+\begin_layout LyX-Code
+int8     --> npy_int8
+\end_layout
+
+\begin_layout LyX-Code
+int16    --> npy_int16
+\end_layout
+
+\begin_layout LyX-Code
+int32    --> npy_int32
+\end_layout
+
+\begin_layout LyX-Code
+int64    --> npy_int64     
+\end_layout
+
+\begin_layout LyX-Code
+float32  --> npy_float32    
+\end_layout
+
+\begin_layout LyX-Code
+float64  --> npy_float64
+\end_layout
+
+\begin_layout LyX-Code
+float128 --> npy_float128
+\end_layout
+
+\begin_layout Standard
+For each numpy array passed in, the numpy type, dimension, and name must
+ be provided in the 
+\emph on
+np_types
+\emph default
+ argument.
+ For example, to pass in a 1D int32 array, 
+\emph on
+arr
+\emph default
+, and a 3D float64 array, 
+\emph on
+arr3d
+\emph default
+, the 
+\emph on
+np_types
+\emph default
+ argument would be
+\end_layout
+
+\begin_layout LyX-Code
+((np.int32, 1, 'arr'), (np.float64, 3, 'arr3d'))
+\end_layout
+
+\begin_layout Standard
+For an 
+\begin_inset Formula $N$
+\end_inset
+
+-dimensional numpy array, 
+\emph on
+arr
+\emph default
+, several variables and a macro are available for use in the C code:
+\end_layout
+
+\begin_layout LyX-Code
+py_arr               <-- The PyArrayObject pointer.
+\end_layout
+
+\begin_layout LyX-Code
+arr(i1, i2, ..., iN) <-- Macro indexing into the array.
+\end_layout
+
+\begin_layout LyX-Code
+arr_ndim             <-- Macro giving the number of dimensions of arr.
+\end_layout
+
+\begin_layout LyX-Code
+arr_shape(i)         <-- Macro giving the length of arr in dimension i.
+ 
+\end_layout
+
+\begin_layout LyX-Code
+                         Like calling arr.shape[i] in python.
+\end_layout
+
+\begin_layout LyX-Code
+
+\end_layout
+
+\begin_layout Subsection
+Return values
+\end_layout
+
+\begin_layout Standard
+The function can return three types of values, int, float, or None, depending
+ on the value of the 
+\emph on
+return_type
+\emph default
+ argument.
+ In order to set the return value in the C code, set the variable 
+\emph on
+return_val
+\emph default
+ to the return value.
+\end_layout
+
+\begin_layout Subsection
+Passing numpy arrays to C functions
+\end_layout
+
+\begin_layout Standard
+In order to utilize the macros above to access array variables in functions
+ given in the support code, the PyArrayObject pointer would need to be passed
+ with the same name.
+ That is, if the array is named 
+\emph on
+arr
+\emph default
+, then the function would need to take an argument of the form
+\end_layout
+
+\begin_layout LyX-Code
+PyArrayObject *py_arr
+\end_layout
+
+\begin_layout Section
+External source files
+\end_layout
+
+\begin_layout Standard
+Both the function's C-code and the support-code can be stored in external
+ files, and accessed using the 
+\emph on
+code_path
+\emph default
+ and 
+\emph on
+support_code_path
+\emph default
+ arguments.
+ To include the source files as module data and have the distribution work
+ correctly, consider using the 
+\emph on
+__file__ 
+\emph default
+variable, which contains the full path for the module from which it is accessed.
+ 
+\end_layout
+
+\begin_layout Subsection
+Debugging
+\end_layout
+
+\begin_layout Standard
+There are two inline functions in 
+\emph on
+np_inline
+\emph default
+.
+ One is called 
+\emph on
+inline
+\emph default
+, and the other is called 
+\emph on
+inline_debug
+\emph default
+.
+ The 
+\emph on
+inline_debug
+\emph default
+ function performs several checks of the incoming data before calling the
+ 
+\emph on
+inline
+\emph default
+ function.
+ A simple way to switch between the two is to use the following imports:
+\end_layout
+
+\begin_layout LyX-Code
+from np_inline import inline_debug as inline # Uses debugging.
+\end_layout
+
+\begin_layout LyX-Code
+from np_inline import inline                 # No debugging.
+\end_layout
+
+\begin_layout Section
+Implementation notes
+\end_layout
+
+\begin_layout Standard
+Generated source files are stored in ~/.python_inline using the unique name
+ provided by the user.
+ The C extension file is built and installed in the same directory using
+ distutils.
+ 
+\end_layout
+
+\begin_layout Standard
+Compilation is triggered only if the user-supplied unique name changes,
+ or the module file doesn't exist.
+ 
+\end_layout
+
+\end_body
+\end_document
