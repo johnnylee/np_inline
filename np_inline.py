@@ -374,11 +374,11 @@ def inline_debug(unique_name, args=(), py_types=(), np_types=(), code=None,
     assert(np.iterable(np_types))
 
     # Check that code and code path aren't both None, or not None.
-    assert(code is not None or code_path is not None)
-    assert(not(code is not None and code_path is not None))
+    assert code is not None or code_path is not None
+    assert not(code is not None and code_path is not None)
 
     # Check support_code and support_code_path aren't both given.
-    assert(not(support_code is not None and support_code_path is not None))
+    assert not(support_code is not None and support_code_path is not None)
 
     # Check paths if they are used. 
     if code_path is not None:
@@ -389,15 +389,15 @@ def inline_debug(unique_name, args=(), py_types=(), np_types=(), code=None,
 
     # Type check python arguments.
     for py_obj, (py_type, c_name) in zip(args[:len(py_types)], py_types):
-        assert(isinstance(py_obj, py_type))
-        assert(py_type in (int, float))
+        assert isinstance(py_obj, py_type), 'Type err: {0}'.format(c_name)
+        assert py_type in (int, float), 'Bad type: {0}'.format(py_type)
         
     # Type check numpy arguments. 
     for np_obj, (np_type, ndim, c_name) in zip(args[len(py_types):], np_types):
-        assert(np_obj.dtype == np_type)
-        assert(np_obj.ndim == ndim)
+        assert np_obj.dtype == np_type, 'Type err: {0}'.format(c_name)
+        assert np_obj.ndim == ndim, 'Bad dims: {0}'.format(c_name)
 
-    assert(return_type in (None, int, float))
+    assert return_type in (None, int, float)
 
     return inline(unique_name, args, py_types, np_types, code, code_path, 
                   support_code, support_code_path, return_type)
