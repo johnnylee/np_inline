@@ -256,9 +256,13 @@ def _build_install_module(c_code, mod_name):
             
         # Change to the code directory.
         os.chdir(_PATH)
-        
-        # Build and install the module here. 
+
         ext = Extension(mod_name, [mod_name_c])
+
+        # Clean.
+        setup(ext_modules=[ext], script_args=['clean'])
+
+        # Build and install the module here. 
         setup(ext_modules=[ext], 
               script_args=['install', '--install-lib={0}'.format(_PATH)])
     finally:
