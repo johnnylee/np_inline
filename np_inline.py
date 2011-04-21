@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import multiprocessing 
+import imp
 
 ###############################################################################
 # Compilation lock for multiprocessing.                                       #
@@ -294,14 +295,18 @@ def _string_or_path(code_str, code_path):
 _FUNCS = {}
 
 def _import(mod_name):
+    mod_path = os.path.join(_PATH, '{0}.so'.format(mod_name))
+    mod = imp.load_dynamic(mod_name, mod_path)
+    _FUNCS[mod_name] = mod.function
+    
     # Save the current path so we can reset at the end of this function.
-    curpath = os.getcwd() 
-    try:
-        os.chdir(_PATH)
-        exec('from {0} import function'.format(mod_name))
-        _FUNCS[mod_name] = function
-    finally:
-        os.chdir(curpath)
+    #curpath = os.getcwd() 
+    #try:
+    #    os.chdir(_PATH)
+    #    exec('from {0} import function'.format(mod_name))
+    #    _FUNCS[mod_name] = function
+    #finally:
+    #    os.chdir(curpath)
 
                   
 def inline(unique_name, args=(), py_types=(), np_types=(), code=None, 
