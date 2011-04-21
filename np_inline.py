@@ -351,7 +351,7 @@ def inline(unique_name, args=(), py_types=(), np_types=(), code=None,
     except:
         pass
         
-    # Next, we try to import the module and inline it again. This will make
+    # Next, we try to import the module and call it again. This will make
     # calling the code the first time reasonably fast. 
     try:
         _import(unique_name)
