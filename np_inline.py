@@ -22,7 +22,7 @@ static PyObject *function(PyObject *self, PyObject *args);
 
 // Boilerplate: function list.
 static PyMethodDef methods[] = {
-    { "function", function, METH_VARARGS, },
+    { "function", function, METH_VARARGS, "Doc string."},
     { NULL, NULL, 0, NULL } /* Sentinel */
 };
 
@@ -121,8 +121,14 @@ _NP_TYPE_CONV_DICT = {
     np.int64    : 'npy_int64',
     np.float32  : 'npy_float32',
     np.float64  : 'npy_float64',
-    np.float128 : 'npy_float128'
 }
+
+# The numpy floating point 128 bit type isn't available on all systems it 
+# turns out. 
+try:
+    _NP_TYPE_CONV_DICT[np.float128] = 'npy_float128'
+except:
+    print('Numpy float128 not available.')
 
 
 def _gen_var_decls(py_types, np_types, return_type):
