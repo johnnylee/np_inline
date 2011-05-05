@@ -249,7 +249,7 @@ def _gen_code(name, user_code, py_types, np_types, support_code, return_type):
 ###############################################################################
 # Building and installation.                                                  #
 ###############################################################################
-def _build_install_module(c_code, mod_name):
+def _build_install_module(c_code, mod_name, extension_kwargs={}):
     # Save the current path so we can reset at the end of this function.
     curpath = os.getcwd() 
     mod_name_c = '{0}.c'.format(mod_name)
@@ -263,8 +263,15 @@ def _build_install_module(c_code, mod_name):
             
         # Change to the code directory.
         os.chdir(_PATH)
+        
+        include_dirs = []
+        if 'include_dirs' in extension_kwargs:
+            include_dirs = extension_kwargs['include_dirs']
+            del extension_kwargs['include_dirs']
 
-        ext = Extension(mod_name, [mod_name_c])
+        include_dirs.append(np.get_include())
+        ext = Extension(mod_name, [mod_name_c], include_dirs=include_dirs, 
+                        **extension_kwargs)
 
         # Clean.
         setup(ext_modules=[ext], script_args=['clean'])
@@ -317,7 +324,7 @@ def _import(mod_name):
                   
 def inline(unique_name, args=(), py_types=(), np_types=(), code=None, 
            code_path=None, support_code=None, support_code_path=None, 
-           return_type=None):
+           return_type=None, extension_kwargs={}):
     """Inline C code in your python code. 
     
     Parameters:
@@ -347,6 +354,8 @@ def inline(unique_name, args=(), py_types=(), np_types=(), code=None,
         including #includes and #defines.
     support_code_path : string, optional
         Full path to support code. 
+    extension_kwargs : dictionary, optiona
+        Keyword arguments to pass to the distutils.Extension constructor.
     return_type : python primitive type
         Either int or float.
     """
@@ -373,7 +382,7 @@ def inline(unique_name, args=(), py_types=(), np_types=(), code=None,
         support_code_str = _string_or_path(support_code, support_code_path)
         c_code = _gen_code(unique_name, code_str, py_types, np_types, 
                            support_code_str, return_type)
-        _build_install_module(c_code, unique_name)
+        _build_install_module(c_code, unique_name, extension_kwargs)
         _import(unique_name)
 
     return _FUNCS[unique_name](*args)
