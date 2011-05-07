@@ -3,7 +3,7 @@
 from distutils.core import setup
 
 setup(name         = "np_inline",
-      version      = "0.1",
+      version      = "0.2",
       description  = "Simple inline C calls using numpy arrays.",
       author       = "J. David Lee",
       author_email = "johnl@cs.wisc.edu",

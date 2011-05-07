@@ -48,7 +48,7 @@ theorems-ams
 \begin_body
 
 \begin_layout Title
-np_inline 0.1
+np_inline 0.2
 \end_layout
 
 \begin_layout Author
@@ -496,7 +496,7 @@ arr_shape(i)         <-- Macro giving the length of arr in dimension i.
 \end_layout
 
 \begin_layout LyX-Code
-                         Like calling arr.shape[i] in python.
+                         Like arr.shape[i] in python.
 \end_layout
 
 \begin_layout LyX-Code
@@ -518,7 +518,8 @@ return_type
 \emph on
 return_val
 \emph default
- to the return value.
+ to the return value in your C code.
+ 
 \end_layout
 
 \begin_layout Subsection
@@ -540,7 +541,7 @@ arr
 PyArrayObject *py_arr
 \end_layout
 
-\begin_layout Section
+\begin_layout Subsection
 External source files
 \end_layout
 
@@ -555,13 +556,32 @@ code_path
 support_code_path
 \emph default
  arguments.
- To include the source files as module data and have the distribution work
- correctly, consider using the 
+\end_layout
+
+\begin_layout Subsection
+External libraries
+\end_layout
+
+\begin_layout Standard
+In order to link external libraries, the appropriate keyword arguments need
+ to be supplied to the 
 \emph on
-__file__ 
+distutils.core.Extension
 \emph default
-variable, which contains the full path for the module from which it is accessed.
- 
+ constructor.
+ These arguments can be passed into the 
+\emph on
+inline 
+\emph default
+or 
+\emph on
+inline_debug
+\emph default
+ functions as a dictionary via the 
+\emph on
+extension_kwargs
+\emph default
+ argument.
 \end_layout
 
 \begin_layout Subsection
@@ -593,6 +613,8 @@ inline_debug
 inline
 \emph default
  function.
+ It also forces the code to be compiled the first time it is called, instead
+ of checking if the module exists on disk.
  A simple way to switch between the two is to use the following imports:
 \end_layout
 
@@ -609,8 +631,8 @@ Implementation notes
 \end_layout
 
 \begin_layout Standard
-Generated source files are stored in ~/.python_inline using the unique name
- provided by the user.
+Generated source files are stored in ~/.np_inline using the unique name provided
+ by the user.
  The C extension file is built and installed in the same directory using
  distutils.
  

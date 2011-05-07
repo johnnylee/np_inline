@@ -204,24 +204,9 @@ def _gen_numpy_array_macros(np_types):
     return '\n'.join(str_list)
 
 
-def _gen_numpy_array_vars(np_types):
-    str_list = []
-    for np_type, dims, c_name in np_types:
-        str_list.append('npy_int {0}_ndim = py_{0}->nd;'.format(c_name))
-        str_list.append('npy_intp *{0}_shape = py_{0}->dimensions;'.format(
-                c_name))
-        for i in range(dims):
-            s = 'npy_int {0}_shape{1} = py_{0}->dimensions[{1}];'.format(
-                c_name, i)
-            str_list.append(s)
-
-    return '\n'.join(str_list)
-
-
 def _gen_return_val(return_type):
     if return_type is None:
         return 'Py_RETURN_NONE;'
-
     return 'return {0}(return_val);'.format(_RETURN_FUNC_DICT[return_type])
 
 
@@ -260,18 +245,17 @@ def _build_install_module(c_code, mod_name, extension_kwargs={}):
         # Write out the code.
         with open(os.path.join(_PATH, mod_name_c), 'wb') as f:
             f.write(c_code)
+
+        # Make sure numpy headers are included. 
+        if 'include_dirs' not in extension_kwargs:
+            extension_kwargs['include_dirs'] = []
+        extension_kwargs['include_dirs'].append(np.get_include())
             
         # Change to the code directory.
         os.chdir(_PATH)
-        
-        include_dirs = []
-        if 'include_dirs' in extension_kwargs:
-            include_dirs = extension_kwargs['include_dirs']
-            del extension_kwargs['include_dirs']
 
-        include_dirs.append(np.get_include())
-        ext = Extension(mod_name, [mod_name_c], include_dirs=include_dirs, 
-                        **extension_kwargs)
+        # Create the extension module object. 
+        ext = Extension(mod_name, [mod_name_c], **extension_kwargs)
 
         # Clean.
         setup(ext_modules=[ext], script_args=['clean'])
@@ -279,6 +263,7 @@ def _build_install_module(c_code, mod_name, extension_kwargs={}):
         # Build and install the module here. 
         setup(ext_modules=[ext], 
               script_args=['install', '--install-lib={0}'.format(_PATH)])
+
     finally:
         os.chdir(curpath)
 
@@ -304,33 +289,28 @@ def _string_or_path(code_str, code_path):
 # Importing and running.                                                      #
 ###############################################################################
 
-# This is a dictionary mapping unique name/revisions to their functions.
+# This is a dictionary mapping unique names to their functions. 
 _FUNCS = {}
 
+
+def _mod_path(mod_name):
+    return os.path.join(_PATH, '{0}.so'.format(mod_name))
+
+
 def _import(mod_name):
-    mod_path = os.path.join(_PATH, '{0}.so'.format(mod_name))
-    mod = imp.load_dynamic(mod_name, mod_path)
+    mod = imp.load_dynamic(mod_name, _mod_path(mod_name))
     _FUNCS[mod_name] = mod.function
-    
-    # Save the current path so we can reset at the end of this function.
-    #curpath = os.getcwd() 
-    #try:
-    #    os.chdir(_PATH)
-    #    exec('from {0} import function'.format(mod_name))
-    #    _FUNCS[mod_name] = function
-    #finally:
-    #    os.chdir(curpath)
 
                   
 def inline(unique_name, args=(), py_types=(), np_types=(), code=None, 
            code_path=None, support_code=None, support_code_path=None, 
-           return_type=None, extension_kwargs={}):
+           extension_kwargs={}, return_type=None):
     """Inline C code in your python code. 
     
     Parameters:
     unique_name : string
-        A unique string identifying this bit of code. This should be a 
-        valid C identifier.
+        A unique string identifying this bit of code. This should be valid
+        to use as a filename.
     args : typle
         The arguments passed to the C function. Currently the code can
         accept python ints and floats, as well as numpy numeric arrays 
@@ -377,6 +357,9 @@ def inline(unique_name, args=(), py_types=(), np_types=(), code=None,
     # Now we can be as slow as we'd like. We either have an error or the 
     # code isn't compiled. We'll try to compile the code and call the function
     # again.
+    # Note that we are generating the code here if the module isn't found,
+    # but we don't try to see if the code is already written to disk. This 
+    # allows the debug inline code to easily delete the module code. 
     with _COMP_LOCK:
         code_str = _string_or_path(code, code_path)
         support_code_str = _string_or_path(support_code, support_code_path)
@@ -390,8 +373,10 @@ def inline(unique_name, args=(), py_types=(), np_types=(), code=None,
 
 def inline_debug(unique_name, args=(), py_types=(), np_types=(), code=None, 
                  code_path=None, support_code=None, support_code_path=None,
-                 return_type=None):
-    """Same as inline, but with error checking."""
+                 extension_kwargs={}, return_type=None):
+    """Same as inline, but the types of each argument are checked, and 
+    the code is recompiled the first time this function is called. 
+    """
     # Check args, py_types and np_types for iterability.
     assert(np.iterable(args))
     assert(np.iterable(py_types))
@@ -399,10 +384,10 @@ def inline_debug(unique_name, args=(), py_types=(), np_types=(), code=None,
 
     # Check that code and code path aren't both None, or not None.
     assert code is not None or code_path is not None
-    assert not(code is not None and code_path is not None)
+    assert not (code is not None and code_path is not None)
 
     # Check support_code and support_code_path aren't both given.
-    assert not(support_code is not None and support_code_path is not None)
+    assert not (support_code is not None and support_code_path is not None)
 
     # Check paths if they are used. 
     if code_path is not None:
@@ -421,7 +406,13 @@ def inline_debug(unique_name, args=(), py_types=(), np_types=(), code=None,
         assert np_obj.dtype == np_type, 'Type err: {0}'.format(c_name)
         assert np_obj.ndim == ndim, 'Bad dims: {0}'.format(c_name)
 
+    # Type check the return type. 
     assert return_type in (None, int, float)
+
+    # If this is the first call to this function, delete the module to force
+    # a recompilation. 
+    if unique_name not in _FUNCS and os.path.exists(_mod_path(unique_name)):
+        os.unlink(_mod_path(unique_name))
 
     return inline(unique_name, args, py_types, np_types, code, code_path, 
                   support_code, support_code_path, return_type)
