@@ -440,6 +440,7 @@ def inline_debug(unique_name, args=(), py_types=(), np_types=(), code=None,
     # a recompilation. 
     if unique_name not in _FUNCS and os.path.exists(_mod_path(unique_name)):
         os.unlink(_mod_path(unique_name))
-
+    
     return inline(unique_name, args, py_types, np_types, code, code_path, 
-                  support_code, support_code_path, return_type)
+                  support_code, support_code_path, extension_kwargs, 
+                  return_type)
