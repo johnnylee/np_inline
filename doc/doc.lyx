@@ -92,7 +92,7 @@ scipy.weave.inline
 \begin_layout Standard
 One advantage np_inline has over weave.inline is that it works properly in
  a multiprocessing environment because it uses a multiprocessing.Lock object
- to protect the module production code.
+ to protect the module production code. Another is that it produces reasonably formatted, human-readable C files.
  
 \end_layout
 
