@@ -48,7 +48,7 @@ theorems-ams
 \begin_body
 
 \begin_layout Title
-np_inline 0.2
+np_inline 0.3
 \end_layout
 
 \begin_layout Author
@@ -83,6 +83,16 @@ np_inline
 scipy.weave.inline
 \emph default
  for numeric computations on numpy arrays.
+ The module is implemented in a single file containing less than 500 lines
+ of code, including the C-file template, docstrings, comments and white
+ space.
+ 
+\end_layout
+
+\begin_layout Standard
+One advantage np_inline has over weave.inline is that it works properly in
+ a multiprocessing environment because it uses a multiprocessing.Lock object
+ to protect the module production code.
  
 \end_layout
 
@@ -137,6 +147,13 @@ args
 .
  This is a feature.
  
+\end_layout
+
+\begin_layout Standard
+\begin_inset Newpage pagebreak
+\end_inset
+
+
 \end_layout
 
 \begin_layout Subsection
