@@ -75,7 +75,7 @@ __SUPPORT_CODE__
 /*****************************************************************************
  * The function.                                                             *
  *****************************************************************************/
-PyObject *function(PyObject *self, PyObject *args) {
+static PyObject *function(PyObject *self, PyObject *args) {
 
 
 /***************************************
@@ -216,10 +216,10 @@ def _gen_numpy_array_index_macro(np_type, dims, c_name):
     for i in range(dims):
         strides += ' + (x{0}) * py_{1}->strides[{0}]'.format(i, c_name)
     
-    return '#define {0}({1}) *({2} *)((py_{0}->data {3}))'.format(
+    return '#define {0}({1}) (*({2} *)((py_{0}->data {3})))'.format(
         c_name, arg_list, c_type, strides)
-    
-    
+
+
 def _gen_numpy_array_macros(np_types):
     str_list = []
     for np_type, dims, c_name in np_types:
@@ -432,6 +432,8 @@ def inline_debug(unique_name, args=(), py_types=(), np_types=(), code=None,
     for np_obj, (np_type, ndim, c_name) in zip(args[len(py_types):], np_types):
         assert np_obj.dtype == np_type, 'Type err: {0}'.format(c_name)
         assert np_obj.ndim == ndim, 'Bad dims: {0}'.format(c_name)
+        assert np_obj.flags['WRITEABLE'], 'Not writable: {0}'.format(c_name)
+        assert np_obj.flags['ALIGNED'], 'Not aligned: {0}'.format(c_name)
 
     # Type check the return type. 
     assert return_type in (None, int, float)
@@ -440,7 +442,7 @@ def inline_debug(unique_name, args=(), py_types=(), np_types=(), code=None,
     # a recompilation. 
     if unique_name not in _FUNCS and os.path.exists(_mod_path(unique_name)):
         os.unlink(_mod_path(unique_name))
-    
+        
     return inline(unique_name, args, py_types, np_types, code, code_path, 
                   support_code, support_code_path, extension_kwargs, 
                   return_type)
