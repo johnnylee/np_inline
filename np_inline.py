@@ -39,6 +39,7 @@ _COMP_LOCK = multiprocessing.Lock()
 # C-code skeleton.                                                            #
 ###############################################################################
 _SKEL = r'''
+#define PY_ARRAY_UNIQUE_SYMBOL __UNIQUE_NAME__
 #include <Python.h>
 #include <numpy/arrayobject.h>
 #include <math.h>
@@ -64,6 +65,12 @@ PyMODINIT_FUNC init__MODULE_NAME__(void) {
  * Array access macros.                                                      *
  *****************************************************************************/
 __NUMPY_ARRAY_MACROS__
+
+
+/*****************************************************************************
+ * Debug macros.                                                             *
+ *****************************************************************************/
+__NUMPY_ARRAY_DEBUG_MACROS__
 
 
 /*****************************************************************************
@@ -133,7 +140,7 @@ _RETURN_FUNC_DICT = {
 
 _TYPE_PARSE_SPEC_DICT = {
     float : 'd',
-    int   : 'i'
+    int   : 'l'
 }
 
 
@@ -186,7 +193,7 @@ def _gen_parse_arg_types(py_types, np_types):
         str_list.append(_TYPE_PARSE_SPEC_DICT[py_type])
 
     for np_type, dims, c_name in np_types:
-        str_list.append('O')
+        str_list.append('O!')
         
     return ''.join(str_list)
 
@@ -198,7 +205,7 @@ def _gen_parse_arg_list(py_types, np_types):
         str_list.append('&{0}'.format(c_name))
 
     for np_type, dims, c_name in np_types:
-        str_list.append('&py_{0}'.format(c_name))
+        str_list.append('&PyArray_Type, &py_{0}'.format(c_name))
         
     return ', '.join(str_list)
 
@@ -214,9 +221,9 @@ def _gen_numpy_array_index_macro(np_type, dims, c_name):
     # *(type *)((data + i*array->strides[0] + j*array->strides[1]))
     strides = ''
     for i in range(dims):
-        strides += ' + (x{0}) * py_{1}->strides[{0}]'.format(i, c_name)
+        strides += ' + (x{0}) * PyArray_STRIDES(py_{1})[{0}]'.format(i, c_name)
     
-    return '#define {0}({1}) (*({2} *)((py_{0}->data {3})))'.format(
+    return '#define {0}({1}) (*({2} *)((PyArray_BYTES(py_{0}) {3})))'.format(
         c_name, arg_list, c_type, strides)
 
 
@@ -231,6 +238,20 @@ def _gen_numpy_array_macros(np_types):
     return '\n'.join(str_list)
 
 
+def _gen_numpy_array_debug_macros(np_types):
+    str_list = []
+    for np_type, dims, c_name in np_types:
+        arg_list = ','.join(['x{0}'.format(i) for i in range(dims)])
+        
+        str_list.append('#define {0}_assert({1}) \\'.format(c_name, arg_list))
+        for i in range(dims):
+            str_list.append('assert({0} < py_{1}->nd);\\'.format(i, c_name))
+            str_list.append('assert((x{0}) >= 0);\\'.format(i))
+            str_list.append(
+                'assert((x{0}) < py_{1}->dimensions[({0})])'.format(i, c_name))
+    return '\n'.join(str_list)
+            
+
 def _gen_return_val(return_type):
     if return_type is None:
         return 'Py_RETURN_NONE;'
@@ -241,8 +262,12 @@ def _gen_code(name, user_code, py_types, np_types, support_code, return_type):
     """Return a string containing the generated C code."""
     s = _SKEL.replace('__MODULE_NAME__', 
                      name)
+    s = s.replace('__UNIQUE_NAME__', 
+                  '__np_inline_{0}'.format(name))
     s = s.replace('__NUMPY_ARRAY_MACROS__', 
                   _gen_numpy_array_macros(np_types))
+    s = s.replace('__NUMPY_ARRAY_DEBUG_MACROS__',
+                  _gen_numpy_array_debug_macros(np_types))
     s = s.replace('__SUPPORT_CODE__', 
                   support_code)
     s = s.replace('__FUNC_VAR_DECLARATIONS__', 
@@ -404,6 +429,12 @@ def inline_debug(unique_name, args=(), py_types=(), np_types=(), code=None,
     """Same as inline, but the types of each argument are checked, and 
     the code is recompiled the first time this function is called. 
     """
+    # Enable debugging (assert, etc). 
+    if 'undef_macros' not in extension_kwargs:
+        extension_kwargs['undef_macros'] = []
+    if 'NDEBUG' not in extension_kwargs['undef_macros']:
+        extension_kwargs['undef_macros'].append('NDEBUG')
+
     # Check args, py_types and np_types for iterability.
     assert(np.iterable(args))
     assert(np.iterable(py_types))
@@ -432,6 +463,7 @@ def inline_debug(unique_name, args=(), py_types=(), np_types=(), code=None,
     for np_obj, (np_type, ndim, c_name) in zip(args[len(py_types):], np_types):
         assert np_obj.dtype == np_type, 'Type err: {0}'.format(c_name)
         assert np_obj.ndim == ndim, 'Bad dims: {0}'.format(c_name)
+        assert np_obj.flags['C_CONTIGUOUS'], 'Not contig: {0}'.format(c_name)
         assert np_obj.flags['WRITEABLE'], 'Not writable: {0}'.format(c_name)
         assert np_obj.flags['ALIGNED'], 'Not aligned: {0}'.format(c_name)
 
