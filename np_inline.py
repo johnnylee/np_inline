@@ -341,7 +341,7 @@ def _build_install_module(c_code, mod_name, extension_kwargs={}):
         from distutils.core import setup, Extension
         
         # Write out the code.
-        _safe_write(c_code, os.path,join(_PATH, mod_name_c))
+        _safe_write(c_code, os.path.join(_PATH, mod_name_c))
 
         # Make sure numpy headers are included. 
         if 'include_dirs' not in extension_kwargs:
