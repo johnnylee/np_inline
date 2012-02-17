@@ -26,14 +26,17 @@
 # DAMAGE.
 
 import os
-import numpy as np
+import tempfile
 import multiprocessing 
 import imp
+import numpy as np
+
 
 ###############################################################################
 # Compilation lock for multiprocessing.                                       #
 ###############################################################################
 _COMP_LOCK = multiprocessing.Lock()
+
 
 ###############################################################################
 # C-code skeleton.                                                            #
@@ -121,6 +124,28 @@ _PATH = os.path.expanduser('~/.np_inline')
 
 if not os.path.exists(_PATH):
     os.makedirs(_PATH)
+
+
+###############################################################################
+# Safely write a file.                                                        #
+###############################################################################
+def _safe_write(data, dest_path):
+    """Safely and atomically write the data to the destination path."""
+    # Make sure path exists.
+    dir = os.path.split(dest_path)[0]
+    try:
+        os.makedirs(dir)
+    except:
+        pass
+
+    # Write out temporary file. 
+    tmp_file = tempfile.NamedTemporaryFile('wb', dir=dir, delete=False)
+    tmp_file.write(data)
+    tmp_file.close()
+    
+    # Move to destination. This is atomic (POSIX spec). 
+    os.rename(tmp_file.name, dest_path)
+
 
 
 ###############################################################################
@@ -316,8 +341,7 @@ def _build_install_module(c_code, mod_name, extension_kwargs={}):
         from distutils.core import setup, Extension
         
         # Write out the code.
-        with open(os.path.join(_PATH, mod_name_c), 'wb') as f:
-            f.write(c_code)
+        _safe_write(c_code, os.path,join(_PATH, mod_name_c))
 
         # Make sure numpy headers are included. 
         if 'include_dirs' not in extension_kwargs:
@@ -436,12 +460,13 @@ def inline(args=(), py_types=(), np_types=(), code=None,
     # but we don't try to see if the code is already written to disk. This 
     # allows the debug inline code to easily delete the module code. 
     with _COMP_LOCK:
-        code_str = _string_or_path(code, code_path)
-        support_code_str = _string_or_path(support_code, support_code_path)
-        c_code = _gen_code(mod_name, code_str, py_types, np_types, 
-                     support_code_str, return_type)
-        _build_install_module(c_code, mod_name, extension_kwargs)
-        _import(mod_name)
+        if not mod_name in _FUNCS:
+            code_str = _string_or_path(code, code_path)
+            support_code_str = _string_or_path(support_code, support_code_path)
+            c_code = _gen_code(mod_name, code_str, py_types, np_types, 
+                               support_code_str, return_type)
+            _build_install_module(c_code, mod_name, extension_kwargs)
+            _import(mod_name)
 
     return _FUNCS[mod_name](*args)
     
