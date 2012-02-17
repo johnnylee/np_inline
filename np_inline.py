@@ -26,15 +26,9 @@
 # DAMAGE.
 
 import os
-import multiprocessing 
+import fcntl
 import imp
 import numpy as np
-
-
-###############################################################################
-# Compilation lock for multiprocessing.                                       #
-###############################################################################
-_COMP_LOCK = multiprocessing.Lock()
 
 
 ###############################################################################
@@ -289,59 +283,71 @@ def _gen_code(name, user_code, py_types, np_types, support_code, return_type):
 
 _mod_name_cache = {}
 def _mod_name(py_types, np_types, code, code_path, support_code, 
-                 support_code_path, return_type, extension_kwargs):
+                 support_code_path, return_type, debug):
     """Generate a unique name for the module."""
     global _mod_name_cache
-    cache_key = (py_types, np_types, code, code_path, 
-                 support_code, support_code_path, return_type)
+    cache_key = abs(hash((py_types, np_types, code, code_path, 
+                          support_code, support_code_path, return_type,
+                          debug)))
+
     try:
         return _mod_name_cache[cache_key]
     except:
         code_str1 = _string_or_path(code, code_path)
         code_str2 = _string_or_path(support_code, support_code_path)
-        h = hash((py_types, np_types, return_type, code_str1, code_str2,
-                  tuple(extension_kwargs.keys()), 
-                  tuple(extension_kwargs.values())))
-        mod_name = 'mod_{0}'.format(abs(h))
+        h = abs(hash((py_types, np_types, return_type, code_str1, code_str2)))
+        mod_name = 'mod_{0}'.format(h)
         _mod_name_cache[cache_key] = mod_name
         return mod_name
-
 
 
 ###############################################################################
 # Building and installation.                                                  #
 ###############################################################################
-def _build_install_module(c_code, mod_name, extension_kwargs={}):
+def _build_install_import_module(c_code, mod_name, extension_kwargs={}):
     # Save the current path so we can reset at the end of this function.
     curpath = os.getcwd() 
     mod_name_c = '{0}.c'.format(mod_name)
 
+    # Change to the code directory.
+    os.chdir(_PATH)
+
+    # Open and lock the c file for output. This acts as our inter-process
+    # mutex. 
+    f = open(mod_name_c, 'w')
+    fcntl.flock(f, fcntl.LOCK_EX)
+
     try:
         from distutils.core import setup, Extension
-        # Change to the code directory.
-        os.chdir(_PATH)
 
-        # Write out the code.
-        with open(mod_name_c, 'wb') as f:
+        # The module may have been built already. 
+        try:
+            _import(mod_name)
+        except:
+            # Write out the code.
             f.write(c_code)
-
-        # Make sure numpy headers are included. 
-        if 'include_dirs' not in extension_kwargs:
-            extension_kwargs['include_dirs'] = []
-        extension_kwargs['include_dirs'].append(np.get_include())
+            f.flush()
             
-
-        # Create the extension module object. 
-        ext = Extension(mod_name, [mod_name_c], **extension_kwargs)
-
-        # Clean.
-        setup(ext_modules=[ext], script_args=['clean'])
-
-        # Build and install the module here. 
-        setup(ext_modules=[ext], 
-              script_args=['install', '--install-lib={0}'.format(_PATH)])
-        
+            # Make sure numpy headers are included. 
+            if 'include_dirs' not in extension_kwargs:
+                extension_kwargs['include_dirs'] = []
+            extension_kwargs['include_dirs'].append(np.get_include())
+            
+            # Create the extension module object. 
+            ext = Extension(mod_name, [mod_name_c], **extension_kwargs)
+            
+            # Clean.
+            setup(ext_modules=[ext], script_args=['clean'])
+            
+            # Build and install the module here. 
+            setup(ext_modules=[ext], 
+                  script_args=['install', '--install-lib={0}'.format(_PATH)])
+            
+            _import(mod_name)
+            
     finally:
+        fcntl.flock(f, fcntl.LOCK_UN)
+        f.close()
         os.chdir(curpath)
 
 
@@ -375,14 +381,13 @@ def _mod_path(mod_name):
 
 
 def _import(mod_name):
-    with _COMP_LOCK:
-        mod = imp.load_dynamic(mod_name, _mod_path(mod_name))
-        _FUNCS[mod_name] = mod.function
+    mod = imp.load_dynamic(mod_name, _mod_path(mod_name))
+    _FUNCS[mod_name] = mod.function
 
                   
 def inline(args=(), py_types=(), np_types=(), code=None, 
            code_path=None, support_code=None, support_code_path=None, 
-           extension_kwargs={}, return_type=None):
+           extension_kwargs={}, return_type=None, _DEBUG=False):
     """Inline C code in your python code. 
     
     Parameters:
@@ -416,8 +421,8 @@ def inline(args=(), py_types=(), np_types=(), code=None,
     """
     # A unique name is generated that depends on the code itself. 
     mod_name = _mod_name(py_types, np_types, code, code_path,
-                         support_code, support_code_path, return_type,
-                         extension_kwargs)
+                         support_code, support_code_path, return_type, 
+                         _DEBUG)
 
     # We first just try to run the code. This makes calling the code the 
     # second time the fastest thing we do. 
@@ -428,27 +433,16 @@ def inline(args=(), py_types=(), np_types=(), code=None,
         
     # Next, we try to import the module and inline it again. This will make
     # calling the code the first time reasonably fast. 
-
     try:
         _import(mod_name)
-        return _FUNCS[mod_name](*args)
     except:
-        pass
-
-    # Now we can be as slow as we'd like. We either have an error or the 
-    # code isn't compiled. We'll try to compile the code and call the 
-    # function again.
-    # Note that we are generating the code here if the module isn't found,
-    # but we don't try to see if the code is already written to disk. This 
-    # allows the debug inline code to easily delete the module code. 
-    with _COMP_LOCK:
         code_str = _string_or_path(code, code_path)
-        support_code_str = _string_or_path(support_code, support_code_path)
+        support_code_str = _string_or_path(support_code, 
+                                           support_code_path)
         c_code = _gen_code(mod_name, code_str, py_types, np_types, 
                            support_code_str, return_type)
-        _build_install_module(c_code, mod_name, extension_kwargs)
-
-    _import(mod_name)
+        _build_install_import_module(c_code, mod_name, extension_kwargs)
+        
     return _FUNCS[mod_name](*args)
     
 
@@ -502,11 +496,10 @@ def inline_debug(args=(), py_types=(), np_types=(), code=None,
     # If this is the first call to this function, delete the module to force
     # a recompilation. 
     mod_name = _mod_name(py_types, np_types, code, code_path,
-                         support_code, support_code_path, return_type,
-                         extension_kwargs)
+                         support_code, support_code_path, return_type, True)
     if mod_name not in _FUNCS and os.path.exists(_mod_path(mod_name)):
         os.unlink(_mod_path(mod_name))
         
     return inline(args, py_types, np_types, code, code_path, 
                   support_code, support_code_path, extension_kwargs, 
-                  return_type)
+                  return_type, _DEBUG=True)
