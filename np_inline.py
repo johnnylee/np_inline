@@ -26,7 +26,6 @@
 # DAMAGE.
 
 import os
-import random
 import multiprocessing 
 import imp
 import numpy as np
@@ -315,13 +314,7 @@ def _mod_name(py_types, np_types, code, code_path, support_code,
 def _build_install_module(c_code, mod_name, extension_kwargs={}):
     # Save the current path so we can reset at the end of this function.
     curpath = os.getcwd() 
-    
-    # We generate a unique temporary module name to build the module, then
-    # later we rename the file to the final destination. This is an atomic
-    # operation on a POSIX system. 
-    tmp_mod_name = mod_name + '_{0}'.format(
-        random.randint(100000000, 999999999))
-    mod_name_c = '{0}.c'.format(tmp_mod_name)
+    mod_name_c = '{0}.c'.format(mod_name)
 
     try:
         from distutils.core import setup, Extension
@@ -339,7 +332,7 @@ def _build_install_module(c_code, mod_name, extension_kwargs={}):
             
 
         # Create the extension module object. 
-        ext = Extension(tmp_mod_name, [mod_name_c], **extension_kwargs)
+        ext = Extension(mod_name, [mod_name_c], **extension_kwargs)
 
         # Clean.
         setup(ext_modules=[ext], script_args=['clean'])
@@ -348,16 +341,6 @@ def _build_install_module(c_code, mod_name, extension_kwargs={}):
         setup(ext_modules=[ext], 
               script_args=['install', '--install-lib={0}'.format(_PATH)])
         
-        # Move temp lib to final location (atomically on POSIX systems). 
-        os.rename(tmp_mod_name + '.so', mod_name + '.so')
-        
-        # Remove the C file. 
-        try:
-            os.unlink(mod_name_c)
-        except Exception, ex:
-            print('Failed to unlink file: {}'.format(mod_name_c))
-            print(ex)
-
     finally:
         os.chdir(curpath)
 
@@ -444,6 +427,7 @@ def inline(args=(), py_types=(), np_types=(), code=None,
         
     # Next, we try to import the module and inline it again. This will make
     # calling the code the first time reasonably fast. 
+
     try:
         _import(mod_name)
         return _FUNCS[mod_name](*args)
@@ -451,19 +435,18 @@ def inline(args=(), py_types=(), np_types=(), code=None,
         pass
 
     # Now we can be as slow as we'd like. We either have an error or the 
-    # code isn't compiled. We'll try to compile the code and call the function
-    # again.
+    # code isn't compiled. We'll try to compile the code and call the 
+    # function again.
     # Note that we are generating the code here if the module isn't found,
     # but we don't try to see if the code is already written to disk. This 
     # allows the debug inline code to easily delete the module code. 
     with _COMP_LOCK:
-        if not mod_name in _FUNCS:
-            code_str = _string_or_path(code, code_path)
-            support_code_str = _string_or_path(support_code, support_code_path)
-            c_code = _gen_code(mod_name, code_str, py_types, np_types, 
-                               support_code_str, return_type)
-            _build_install_module(c_code, mod_name, extension_kwargs)
-            _import(mod_name)
+        code_str = _string_or_path(code, code_path)
+        support_code_str = _string_or_path(support_code, support_code_path)
+        c_code = _gen_code(mod_name, code_str, py_types, np_types, 
+                           support_code_str, return_type)
+        _build_install_module(c_code, mod_name, extension_kwargs)
+        _import(mod_name)
 
     return _FUNCS[mod_name](*args)
     
