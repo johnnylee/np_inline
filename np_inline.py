@@ -375,8 +375,9 @@ def _mod_path(mod_name):
 
 
 def _import(mod_name):
-    mod = imp.load_dynamic(mod_name, _mod_path(mod_name))
-    _FUNCS[mod_name] = mod.function
+    with _COMP_LOCK:
+        mod = imp.load_dynamic(mod_name, _mod_path(mod_name))
+        _FUNCS[mod_name] = mod.function
 
                   
 def inline(args=(), py_types=(), np_types=(), code=None, 
@@ -446,8 +447,8 @@ def inline(args=(), py_types=(), np_types=(), code=None,
         c_code = _gen_code(mod_name, code_str, py_types, np_types, 
                            support_code_str, return_type)
         _build_install_module(c_code, mod_name, extension_kwargs)
-        _import(mod_name)
 
+    _import(mod_name)
     return _FUNCS[mod_name](*args)
     
 
