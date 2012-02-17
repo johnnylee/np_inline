@@ -26,7 +26,7 @@
 # DAMAGE.
 
 import os
-import tempfile
+import random
 import multiprocessing 
 import imp
 import numpy as np
@@ -124,28 +124,6 @@ _PATH = os.path.expanduser('~/.np_inline')
 
 if not os.path.exists(_PATH):
     os.makedirs(_PATH)
-
-
-###############################################################################
-# Safely write a file.                                                        #
-###############################################################################
-def _safe_write(data, dest_path):
-    """Safely and atomically write the data to the destination path."""
-    # Make sure path exists.
-    dir = os.path.split(dest_path)[0]
-    try:
-        os.makedirs(dir)
-    except:
-        pass
-
-    # Write out temporary file. 
-    tmp_file = tempfile.NamedTemporaryFile('wb', dir=dir, delete=False)
-    tmp_file.write(data)
-    tmp_file.close()
-    
-    # Move to destination. This is atomic (POSIX spec). 
-    os.rename(tmp_file.name, dest_path)
-
 
 
 ###############################################################################
@@ -335,24 +313,31 @@ def _mod_name(py_types, np_types, code, code_path, support_code,
 def _build_install_module(c_code, mod_name, extension_kwargs={}):
     # Save the current path so we can reset at the end of this function.
     curpath = os.getcwd() 
-    mod_name_c = '{0}.c'.format(mod_name)
+    
+    # We generate a unique temporary module name to build the module, then
+    # later we rename the file to the final destination. This is an atomic
+    # operation on a POSIX system. 
+    tmp_mod_name = mod_name + '_{0}'.format(
+        random.randint(100000000, 999999999))
+    mod_name_c = '{0}.c'.format(tmp_mod_name)
 
     try:
         from distutils.core import setup, Extension
-        
+        # Change to the code directory.
+        os.chdir(_PATH)
+
         # Write out the code.
-        _safe_write(c_code, os.path.join(_PATH, mod_name_c))
+        with open(mod_name_c, 'wb') as f:
+            f.write(c_code)
 
         # Make sure numpy headers are included. 
         if 'include_dirs' not in extension_kwargs:
             extension_kwargs['include_dirs'] = []
         extension_kwargs['include_dirs'].append(np.get_include())
             
-        # Change to the code directory.
-        os.chdir(_PATH)
 
         # Create the extension module object. 
-        ext = Extension(mod_name, [mod_name_c], **extension_kwargs)
+        ext = Extension(tmp_mod_name, [mod_name_c], **extension_kwargs)
 
         # Clean.
         setup(ext_modules=[ext], script_args=['clean'])
@@ -360,6 +345,16 @@ def _build_install_module(c_code, mod_name, extension_kwargs={}):
         # Build and install the module here. 
         setup(ext_modules=[ext], 
               script_args=['install', '--install-lib={0}'.format(_PATH)])
+        
+        # Move temp lib to final location (atomically on POSIX systems). 
+        os.rename(tmp_mod_name + '.so', mod_name + '.so')
+        
+        # Remove the C file. 
+        try:
+            os.unlink(mod_name_c)
+        except Exception, ex:
+            print('Failed to unlink file: {}'.format(mod_name_c))
+            print(ex)
 
     finally:
         os.chdir(curpath)
