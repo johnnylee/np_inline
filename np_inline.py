@@ -285,7 +285,7 @@ def _gen_code(name, user_code, py_types, np_types, support_code, return_type):
 
 _mod_name_cache = {}
 def _mod_name(py_types, np_types, code, code_path, support_code, 
-                 support_code_path, return_type):
+                 support_code_path, return_type, extension_kwargs):
     """Generate a unique name for the module."""
     global _mod_name_cache
     cache_key = (py_types, np_types, code, code_path, 
@@ -295,7 +295,8 @@ def _mod_name(py_types, np_types, code, code_path, support_code,
     except:
         code_str1 = _string_or_path(code, code_path)
         code_str2 = _string_or_path(support_code, support_code_path)
-        h = hash((py_types, np_types, return_type, code_str1, code_str2))
+        h = hash((py_types, np_types, return_type, code_str1, code_str2,
+                  extension_kwargs.keys(), extension_kwargs.values()))
         mod_name = 'mod_{0}'.format(abs(h))
         _mod_name_cache[cache_key] = mod_name
         return mod_name
@@ -409,7 +410,8 @@ def inline(args=(), py_types=(), np_types=(), code=None,
     """
     # A unique name is generated that depends on the code itself. 
     mod_name = _mod_name(py_types, np_types, code, code_path,
-                         support_code, support_code_path, return_type)
+                         support_code, support_code_path, return_type,
+                         extension_kwargs)
 
     # We first just try to run the code. This makes calling the code the 
     # second time the fastest thing we do. 
@@ -493,7 +495,8 @@ def inline_debug(args=(), py_types=(), np_types=(), code=None,
     # If this is the first call to this function, delete the module to force
     # a recompilation. 
     mod_name = _mod_name(py_types, np_types, code, code_path,
-                         support_code, support_code_path, return_type)
+                         support_code, support_code_path, return_type,
+                         extension_kwargs)
     if mod_name not in _FUNCS and os.path.exists(_mod_path(mod_name)):
         os.unlink(_mod_path(mod_name))
         
