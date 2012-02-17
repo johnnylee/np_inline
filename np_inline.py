@@ -296,7 +296,8 @@ def _mod_name(py_types, np_types, code, code_path, support_code,
         code_str1 = _string_or_path(code, code_path)
         code_str2 = _string_or_path(support_code, support_code_path)
         h = hash((py_types, np_types, return_type, code_str1, code_str2,
-                  extension_kwargs.keys(), extension_kwargs.values()))
+                  tuple(extension_kwargs.keys()), 
+                  tuple(extension_kwargs.values())))
         mod_name = 'mod_{0}'.format(abs(h))
         _mod_name_cache[cache_key] = mod_name
         return mod_name
