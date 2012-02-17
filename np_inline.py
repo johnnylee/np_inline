@@ -281,7 +281,26 @@ def _gen_code(name, user_code, py_types, np_types, support_code, return_type):
     s = s.replace('__RETURN_VAL__', 
                   _gen_return_val(return_type))
     return s
-    
+
+
+_mod_name_cache = {}
+def _mod_name(py_types, np_types, code, code_path, support_code, 
+                 support_code_path, return_type):
+    """Generate a unique name for the module."""
+    global _mod_name_cache
+    cache_key = (py_types, np_types, code, code_path, 
+                 support_code, support_code_path, return_type)
+    try:
+        return _mod_name_cache[cache_key]
+    except:
+        code_str1 = _string_or_path(code, code_path)
+        code_str2 = _string_or_path(support_code, support_code_path)
+        h = hash((py_types, np_types, return_type, code_str1, code_str2))
+        mod_name = 'mod_{0}'.format(abs(h))
+        _mod_name_cache[cache_key] = mod_name
+        return mod_name
+
+
 
 ###############################################################################
 # Building and installation.                                                  #
@@ -354,15 +373,12 @@ def _import(mod_name):
     _FUNCS[mod_name] = mod.function
 
                   
-def inline(unique_name, args=(), py_types=(), np_types=(), code=None, 
+def inline(args=(), py_types=(), np_types=(), code=None, 
            code_path=None, support_code=None, support_code_path=None, 
            extension_kwargs={}, return_type=None):
     """Inline C code in your python code. 
     
     Parameters:
-    unique_name : string
-        A unique string identifying this bit of code. This should be valid
-        to use as a filename.
     args : typle
         The arguments passed to the C function. Currently the code can
         accept python ints and floats, as well as numpy numeric arrays 
@@ -391,18 +407,22 @@ def inline(unique_name, args=(), py_types=(), np_types=(), code=None,
     return_type : python primitive type
         Either int or float.
     """
+    # A unique name is generated that depends on the code itself. 
+    mod_name = _mod_name(py_types, np_types, code, code_path,
+                         support_code, support_code_path, return_type)
+
     # We first just try to run the code. This makes calling the code the 
     # second time the fastest thing we do. 
     try:
-        return _FUNCS[unique_name](*args)
+        return _FUNCS[mod_name](*args)
     except:
         pass
         
     # Next, we try to import the module and inline it again. This will make
     # calling the code the first time reasonably fast. 
     try:
-        _import(unique_name)
-        return _FUNCS[unique_name](*args)
+        _import(mod_name)
+        return _FUNCS[mod_name](*args)
     except:
         pass
 
@@ -415,15 +435,15 @@ def inline(unique_name, args=(), py_types=(), np_types=(), code=None,
     with _COMP_LOCK:
         code_str = _string_or_path(code, code_path)
         support_code_str = _string_or_path(support_code, support_code_path)
-        c_code = _gen_code(unique_name, code_str, py_types, np_types, 
-                           support_code_str, return_type)
-        _build_install_module(c_code, unique_name, extension_kwargs)
-        _import(unique_name)
+        c_code = _gen_code(mod_name, code_str, py_types, np_types, 
+                     support_code_str, return_type)
+        _build_install_module(c_code, mod_name, extension_kwargs)
+        _import(mod_name)
 
-    return _FUNCS[unique_name](*args)
+    return _FUNCS[mod_name](*args)
     
 
-def inline_debug(unique_name, args=(), py_types=(), np_types=(), code=None, 
+def inline_debug(args=(), py_types=(), np_types=(), code=None, 
                  code_path=None, support_code=None, support_code_path=None,
                  extension_kwargs={}, return_type=None):
     """Same as inline, but the types of each argument are checked, and 
@@ -472,9 +492,11 @@ def inline_debug(unique_name, args=(), py_types=(), np_types=(), code=None,
 
     # If this is the first call to this function, delete the module to force
     # a recompilation. 
-    if unique_name not in _FUNCS and os.path.exists(_mod_path(unique_name)):
-        os.unlink(_mod_path(unique_name))
+    mod_name = _mod_name(py_types, np_types, code, code_path,
+                         support_code, support_code_path, return_type)
+    if mod_name not in _FUNCS and os.path.exists(_mod_path(mod_name)):
+        os.unlink(_mod_path(mod_name))
         
-    return inline(unique_name, args, py_types, np_types, code, code_path, 
+    return inline(args, py_types, np_types, code, code_path, 
                   support_code, support_code_path, extension_kwargs, 
                   return_type)
