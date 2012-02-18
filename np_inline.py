@@ -329,26 +329,23 @@ def _build_install_import_module(c_code, mod_name, extension_kwargs={}):
             with open(mod_name_c, 'w') as f:
                 # Write out the code.
                 f.write(c_code)
-                f.flush()
-                os.fsync(f.fileno())
                 
-                # Make sure numpy headers are included. 
-                if 'include_dirs' not in extension_kwargs:
-                    extension_kwargs['include_dirs'] = []
-                extension_kwargs['include_dirs'].append(np.get_include())
+            # Make sure numpy headers are included. 
+            if 'include_dirs' not in extension_kwargs:
+                extension_kwargs['include_dirs'] = []
+            extension_kwargs['include_dirs'].append(np.get_include())
             
-                # Create the extension module object. 
-                ext = Extension(mod_name, [mod_name_c], **extension_kwargs)
+            # Create the extension module object. 
+            ext = Extension(mod_name, [mod_name_c], **extension_kwargs)
             
-                # Clean.
-                setup(ext_modules=[ext], script_args=['clean'])
+            # Clean.
+            setup(ext_modules=[ext], script_args=['clean'])
             
-                # Build and install the module here. 
-                setup(ext_modules=[ext], 
-                      script_args=['install', 
-                                   '--install-lib={0}'.format(_PATH)])
+            # Build and install the module here. 
+            setup(ext_modules=[ext], 
+                  script_args=['install', '--install-lib={0}'.format(_PATH)])
             
-                _import(mod_name)
+            _import(mod_name)
             
     finally:
         lock.close()
