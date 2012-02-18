@@ -327,6 +327,7 @@ def _build_install_import_module(c_code, mod_name, extension_kwargs={}):
             # Write out the code.
             f.write(c_code)
             f.flush()
+            os.fsync(f.fileno())
             
             # Make sure numpy headers are included. 
             if 'include_dirs' not in extension_kwargs:
