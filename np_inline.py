@@ -163,6 +163,9 @@ except:
     print('Numpy float128 not available.')
 
 
+###############################################################################
+# Code generation functions.
+###############################################################################
 def _gen_var_decls(py_types, np_types, return_type):
     """py_types should be a list with elements of the form
     (python_object, python_type, c_code_name)
@@ -246,8 +249,10 @@ def _gen_numpy_array_debug_macros(np_types):
             str_list.append('assert({0} < py_{1}->nd);\\'.format(i, c_name))
             str_list.append('assert((x{0}) >= 0);\\'.format(i))
             str_list.append(
-                'assert((x{0}) < py_{1}->dimensions[({0})])'.format(i, c_name))
-    return '\n'.join(str_list)
+                'assert((x{0}) < py_{1}->dimensions[({0})]) \\'.format(
+                    i, c_name))
+    return '\n'.join(str_list)[:-1]
+
             
 
 def _gen_return_val(return_type):
@@ -281,83 +286,62 @@ def _gen_code(name, user_code, py_types, np_types, support_code, return_type):
     return s
 
 
-_mod_name_cache = {}
-def _mod_name(py_types, np_types, code, code_path, support_code, 
-                 support_code_path, return_type, debug):
-    """Generate a unique name for the module."""
-    global _mod_name_cache
-    cache_key = abs(hash((py_types, np_types, code, code_path, 
-                          support_code, support_code_path, return_type,
-                          debug)))
-
-    try:
-        return _mod_name_cache[cache_key]
-    except:
-        code_str1 = _string_or_path(code, code_path)
-        code_str2 = _string_or_path(support_code, support_code_path)
-        h = abs(hash((py_types, np_types, return_type, code_str1, code_str2)))
-        mod_name = 'mod_{0}'.format(h)
-        _mod_name_cache[cache_key] = mod_name
-        return mod_name
-
-
 ###############################################################################
 # Building and installation.                                                  #
 ###############################################################################
-def _build_install_import_module(c_code, mod_name, extension_kwargs={}):
+def _build_install_module(code_str, mod_name, extension_kwargs):
     # Save the current path so we can reset at the end of this function.
     curpath = os.getcwd() 
     mod_name_c = '{0}.c'.format(mod_name)
-    lockfile = '{0}.lock'.format(mod_name)
 
     # Change to the code directory.
     os.chdir(_PATH)
 
     try:
-        # Open and lock the c file for output. This acts as our inter-process
-        # mutex. 
-        lock = open(lockfile, 'w')
-        fcntl.flock(lock, fcntl.LOCK_EX)
-
         from distutils.core import setup, Extension
 
-        # The module may have been built already. 
-        try:
-            _import(mod_name)
-        except:
-
-            with open(mod_name_c, 'w') as f:
-                # Write out the code.
-                f.write(c_code)
+        with open(mod_name_c, 'w') as f:
+            # Write out the code.
+            f.write(code_str)
                 
-            # Make sure numpy headers are included. 
-            if 'include_dirs' not in extension_kwargs:
-                extension_kwargs['include_dirs'] = []
-            extension_kwargs['include_dirs'].append(np.get_include())
+        # Make sure numpy headers are included. 
+        if 'include_dirs' not in extension_kwargs:
+            extension_kwargs['include_dirs'] = []
+        extension_kwargs['include_dirs'].append(np.get_include())
             
-            # Create the extension module object. 
-            ext = Extension(mod_name, [mod_name_c], **extension_kwargs)
+        # Create the extension module object. 
+        ext = Extension(mod_name, [mod_name_c], **extension_kwargs)
             
-            # Clean.
-            setup(ext_modules=[ext], script_args=['clean'])
+        # Clean.
+        setup(ext_modules=[ext], script_args=['clean'])
             
-            # Build and install the module here. 
-            setup(ext_modules=[ext], 
-                  script_args=['install', '--install-lib={0}'.format(_PATH)])
-            
-            _import(mod_name)
+        # Build and install the module here. 
+        setup(ext_modules=[ext], 
+              script_args=['install', '--install-lib={0}'.format(_PATH)])
             
     finally:
-        lock.close()
         os.chdir(curpath)
+
+
+###############################################################################
+# File locking: This works on linux, but may not work on other platforms. 
+###############################################################################
+def _get_lock(mod_name):
+    lock_file = os.path.join(_PATH, '{0}.lock'.format(mod_name))
+    lock = open(lock_file, 'w')
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    return lock
+    
+
+def _release_lock(lock):
+    lock.close()
 
 
 ###############################################################################
 # Helper functions.                                                           #
 ###############################################################################
 def _string_or_path(code_str, code_path):
-    """Return either code_str if it is not None, or the contents in 
-    code_path.
+    """Return code_str if it is not None, or the contents in code_path.
     """
     if code_str is not None:
         return code_str
@@ -370,34 +354,14 @@ def _string_or_path(code_str, code_path):
 
 
 ###############################################################################
-# Importing and running.                                                      #
+# The inline function itself.
 ###############################################################################
-
-# This is a dictionary mapping unique names to their functions. 
-_FUNCS = {}
-
-
-def _mod_path(mod_name):
-    return os.path.join(_PATH, '{0}.so'.format(mod_name))
-
-
-def _import(mod_name):
-    mod = imp.load_dynamic(mod_name, _mod_path(mod_name))
-    _FUNCS[mod_name] = mod.function
-
-                  
-def inline(args=(), py_types=(), np_types=(), code=None, 
-           code_path=None, support_code=None, support_code_path=None, 
-           extension_kwargs={}, return_type=None, _DEBUG=False):
+def inline(py_types=(), np_types=(), code=None, code_path=None, 
+           support_code=None, support_code_path=None, 
+           extension_kwargs={}, return_type=None, debug=False):
     """Inline C code in your python code. 
     
     Parameters:
-    args : typle
-        The arguments passed to the C function. Currently the code can
-        accept python ints and floats, as well as numpy numeric arrays 
-        of all types. Numpy objects should always be after other 
-        objects, and types should correspond with the definitions given
-        in py_types and np_types respectively. 
     py_types : typle of tuples (python_type, c_name)
         Type specifications for non-numpy arguments. Currently only int 
         and float are valid types. Default is empty tuple.
@@ -419,88 +383,57 @@ def inline(args=(), py_types=(), np_types=(), code=None,
         Keyword arguments to pass to the distutils.Extension constructor.
     return_type : python primitive type
         Either int or float.
+    debug : boolean
+        If True, build with debugging enabled. 
     """
-    # A unique name is generated that depends on the code itself. 
-    mod_name = _mod_name(py_types, np_types, code, code_path,
-                         support_code, support_code_path, return_type, 
-                         _DEBUG)
+    # Get actual code strings. 
+    code         = _string_or_path(code,         code_path)
+    support_code = _string_or_path(support_code, support_code_path)
+    
+    # Make sure types are in tuples so they are hashable. 
+    py_types = tuple(py_types)
+    np_types = tuple(np_types)
 
-    # We first just try to run the code. This makes calling the code the 
-    # second time the fastest thing we do. 
+    # Generate the module name. 
+    h = abs(hash((str(py_types), str(np_types), code, support_code, debug)))
+    mod_name = 'mod_{}'.format(h)
+
+    # The module path. 
+    mod_path = os.path.join(_PATH, '{0}.so'.format(mod_name))
+    
+    # Try to import the module directly. 
     try:
-        return _FUNCS[mod_name](*args)
+        mod = imp.load_dynamic(mod_name, mod_path)
+        return mod.function
     except:
         pass
-        
-    # Next, we try to import the module and inline it again. This will make
-    # calling the code the first time reasonably fast. 
+
+    # We'll have to compile the module. First get an exclusive lock. 
+    lock = _get_lock(mod_name)
+
     try:
-        _import(mod_name)
-    except:
-        code_str = _string_or_path(code, code_path)
-        support_code_str = _string_or_path(support_code, 
-                                           support_code_path)
-        c_code = _gen_code(mod_name, code_str, py_types, np_types, 
-                           support_code_str, return_type)
-        _build_install_import_module(c_code, mod_name, extension_kwargs)
+        # Generate the code string.
+        code_str = _gen_code(mod_name, code, py_types, np_types, support_code,
+                             return_type)
+
+        # Modify keyword arguments for debugging. 
+        if debug:
+            if 'undef_macros' not in extension_kwargs:
+                extension_kwargs['undef_macros'] = []
+            if 'NDEBUG' not in extension_kwargs['undef_macros']:
+                extension_kwargs['undef_macros'].append('NDEBUG')
+
+        # Build the module. 
+        _build_install_module(code_str, mod_name, extension_kwargs, )
         
-    return _FUNCS[mod_name](*args)
-    
+        # Return the module. 
+        mod = imp.load_dynamic(mod_name, mod_path)
+        return mod.function
 
-def inline_debug(args=(), py_types=(), np_types=(), code=None, 
-                 code_path=None, support_code=None, support_code_path=None,
-                 extension_kwargs={}, return_type=None):
-    """Same as inline, but the types of each argument are checked, and 
-    the code is recompiled the first time this function is called. 
-    """
-    # Enable debugging (assert, etc). 
-    if 'undef_macros' not in extension_kwargs:
-        extension_kwargs['undef_macros'] = []
-    if 'NDEBUG' not in extension_kwargs['undef_macros']:
-        extension_kwargs['undef_macros'].append('NDEBUG')
+    finally:
+        _release_lock(lock)
+                              
 
-    # Check args, py_types and np_types for iterability.
-    assert(np.iterable(args))
-    assert(np.iterable(py_types))
-    assert(np.iterable(np_types))
 
-    # Check that code and code path aren't both None, or not None.
-    assert code is not None or code_path is not None
-    assert not (code is not None and code_path is not None)
 
-    # Check support_code and support_code_path aren't both given.
-    assert not (support_code is not None and support_code_path is not None)
 
-    # Check paths if they are used. 
-    if code_path is not None:
-        assert(os.path.exists(code_path))
-        
-    if support_code_path is not None:
-        assert(os.path.exists(support_code_path))
-
-    # Type check python arguments.
-    for py_obj, (py_type, c_name) in zip(args[:len(py_types)], py_types):
-        assert isinstance(py_obj, py_type), 'Type err: {0}'.format(c_name)
-        assert py_type in (int, float), 'Bad type: {0}'.format(py_type)
-        
-    # Type check numpy arguments. 
-    for np_obj, (np_type, ndim, c_name) in zip(args[len(py_types):], np_types):
-        assert np_obj.dtype == np_type, 'Type err: {0}'.format(c_name)
-        assert np_obj.ndim == ndim, 'Bad dims: {0}'.format(c_name)
-        assert np_obj.flags['C_CONTIGUOUS'], 'Not contig: {0}'.format(c_name)
-        assert np_obj.flags['WRITEABLE'], 'Not writable: {0}'.format(c_name)
-        assert np_obj.flags['ALIGNED'], 'Not aligned: {0}'.format(c_name)
-
-    # Type check the return type. 
-    assert return_type in (None, int, float)
-
-    # If this is the first call to this function, delete the module to force
-    # a recompilation. 
-    mod_name = _mod_name(py_types, np_types, code, code_path,
-                         support_code, support_code_path, return_type, True)
-    if mod_name not in _FUNCS and os.path.exists(_mod_path(mod_name)):
-        os.unlink(_mod_path(mod_name))
-        
-    return inline(args, py_types, np_types, code, code_path, 
-                  support_code, support_code_path, extension_kwargs, 
-                  return_type, _DEBUG=True)
