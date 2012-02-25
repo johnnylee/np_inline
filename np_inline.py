@@ -251,8 +251,9 @@ def _gen_numpy_array_debug_macros(np_types):
             str_list.append(
                 'assert((x{0}) < py_{1}->dimensions[({0})]) \\'.format(
                     i, c_name))
-    return '\n'.join(str_list)[:-1]
+        str_list[-1] = str_list[-1][:-1] # Remove trailing slash. 
 
+    return '\n'.join(str_list)
             
 
 def _gen_return_val(return_type):
