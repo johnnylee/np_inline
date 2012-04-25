@@ -26,7 +26,8 @@
 # DAMAGE.
 
 import os
-import fcntl
+import tempfile
+import shutil
 import imp
 import numpy as np
 
@@ -113,7 +114,7 @@ __RETURN_VAL__
 ###############################################################################
 # Module setup.                                                               #
 ###############################################################################
-_PATH = os.path.expanduser('~/.np_inline')
+_PATH = tempfile.gettempdir()
 
 try:
     os.makedirs(_PATH)
@@ -290,13 +291,13 @@ def _gen_code(name, user_code, py_types, np_types, support_code, return_type):
 ###############################################################################
 # Building and installation.                                                  #
 ###############################################################################
-def _build_install_module(code_str, mod_name, extension_kwargs):
+def _build_install_module(mod_dir, code_str, mod_name, extension_kwargs):
     # Save the current path so we can reset at the end of this function.
     curpath = os.getcwd() 
     mod_name_c = '{0}.c'.format(mod_name)
 
     # Change to the code directory.
-    os.chdir(_PATH)
+    os.chdir(mod_dir)
 
     try:
         from distutils.core import setup, Extension
@@ -318,24 +319,10 @@ def _build_install_module(code_str, mod_name, extension_kwargs):
             
         # Build and install the module here. 
         setup(ext_modules=[ext], 
-              script_args=['install', '--install-lib={0}'.format(_PATH)])
+              script_args=['install', '--install-lib={0}'.format(mod_dir)])
             
     finally:
         os.chdir(curpath)
-
-
-###############################################################################
-# File locking: This works on linux, but may not work on other platforms. 
-###############################################################################
-def _get_lock(mod_name):
-    lock_file = os.path.join(_PATH, '{0}.lock'.format(mod_name))
-    lock = open(lock_file, 'w')
-    fcntl.flock(lock, fcntl.LOCK_EX)
-    return lock
-    
-
-def _release_lock(lock):
-    lock.close()
 
 
 ###############################################################################
@@ -387,32 +374,26 @@ def inline(py_types=(), np_types=(), code=None, code_path=None,
     debug : boolean
         If True, build with debugging enabled. 
     """
-    # Get actual code strings. 
-    code         = _string_or_path(code,         code_path)
-    support_code = _string_or_path(support_code, support_code_path)
-    
-    # Make sure types are in tuples so they are hashable. 
-    py_types = tuple(py_types)
-    np_types = tuple(np_types)
-
-    # Generate the module name. 
-    h = abs(hash((str(py_types), str(np_types), code, support_code, debug)))
-    mod_name = 'mod_{}'.format(h)
-
-    # The module path. 
-    mod_path = os.path.join(_PATH, '{0}.so'.format(mod_name))
-    
-    # Try to import the module directly. 
     try:
-        mod = imp.load_dynamic(mod_name, mod_path)
-        return mod.function
-    except:
-        pass
+        # Get actual code strings. 
+        code         = _string_or_path(code,         code_path)
+        support_code = _string_or_path(support_code, support_code_path)
 
-    # We'll have to compile the module. First get an exclusive lock. 
-    lock = _get_lock(mod_name)
+        # Make sure types are in tuples so they are hashable. 
+        py_types = tuple(py_types)
+        np_types = tuple(np_types)
 
-    try:
+        # Generate the directory.
+        uid = os.urandom(10).encode('hex')
+        mod_dir = os.path.join(_PATH, uid)
+        
+        os.mkdir(mod_dir)
+        
+        mod_name = 'mod_{}'.format(uid)
+    
+        # The module path. 
+        mod_path = os.path.join(mod_dir, '{0}.so'.format(mod_name))
+
         # Generate the code string.
         code_str = _gen_code(mod_name, code, py_types, np_types, support_code,
                              return_type)
@@ -425,16 +406,15 @@ def inline(py_types=(), np_types=(), code=None, code_path=None,
                 extension_kwargs['undef_macros'].append('NDEBUG')
 
         # Build the module. 
-        _build_install_module(code_str, mod_name, extension_kwargs, )
-        
+        _build_install_module(mod_dir, code_str, mod_name, extension_kwargs)
+
         # Return the module. 
         mod = imp.load_dynamic(mod_name, mod_path)
         return mod.function
-
     finally:
-        _release_lock(lock)
+        try:
+            shutil.rmtree(mod_dir)
+        except:
+            print('Failed to delete module directory:\n    ' + mod_dir)
                               
-
-
-
 
